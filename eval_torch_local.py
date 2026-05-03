@@ -30,7 +30,7 @@ import sys
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
-
+import quasar
 import numpy as np
 import torch
 import torch.nn.functional as F

@@ -376,13 +376,14 @@ class TokenIDCollator:
 
 def load_model(model_args: ModelArguments, lora_args: LoRAArguments, logger: logging.Logger):
     logger.info(f"Loading model: {model_args.model_path}")
+    local_rank = int(os.environ.get("LOCAL_RANK", 0))
     model = AutoModelForCausalLM.from_pretrained(
         model_args.model_path,
         torch_dtype=parse_torch_dtype(model_args.torch_dtype),
         attn_implementation=model_args.attn_implementation,
         trust_remote_code=model_args.trust_remote_code,
         use_safetensors=True,
-        device_map="auto",
+        device_map={"": local_rank},
     )
     model.config.use_cache = False
     if lora_args.use_lora:

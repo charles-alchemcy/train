@@ -3,13 +3,13 @@
 # Model & Data
 # =============================================================================
 model_path: /root/train/model
-data_file: /root/train/dataset/teutonic_train.jsonl
+data_file: /root/train/dataset/teutonic-train.jsonl
 eval_shard_dir: "/root/train/teutonic_eval" # Directory with .npy files
 eval_shard_seq_len: 2048 # Should match max_length
 eval_shard_max_samples: 100 # Per-shard sampling limit
 eval_shard_total_samples: 10000 # Global limit (optional)
 eval_shard_seed: 100 # For reproducibility
-output_dir: /root/train/checkpoints_VIII
+output_dir: /root/train/checkpoints
 
 # ✅ Use SFTConfig's native fields:
 max_length: 2048 # ← from SFTConfig
@@ -42,7 +42,7 @@ warmup_steps: 10
 bf16: true
 max_grad_norm: 1.0
 optim: "adamw_torch_fused"
-use_liger_kernel: true
+use_liger_kernel: false
 dataloader_drop_last: true
 dataloader_num_workers: 2
 dataloader_pin_memory: true
@@ -64,5 +64,5 @@ log_dir: "logs"
 
 # Distributed
 ddp_backend: "nccl"
-ddp_find_unused_parameters: false
+ddp_find_unused_parameters: true
 save_on_each_node: false
