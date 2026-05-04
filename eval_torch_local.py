@@ -259,45 +259,32 @@ def compute_batch_losses(model, token_batches, device, chunk_size=LM_HEAD_CHUNK)
 
 
 @torch.no_grad()
-def compute_paired_losses(king_model, chall_model, token_batches,
-                          king_device, chall_device,
+def compute_paired_losses(king_model,  token_batches,
+                          king_device,
                           chunk_size=LM_HEAD_CHUNK):
     """Compute per-sequence mean cross-entropy for both models on the same tokens."""
     B = len(token_batches)
     input_ids_k = torch.tensor(token_batches, dtype=torch.long, device=king_device)
-    input_ids_c = torch.tensor(token_batches, dtype=torch.long, device=chall_device)
 
     hidden_k = king_model.model(input_ids_k).last_hidden_state
-    hidden_c = chall_model.model(input_ids_c).last_hidden_state
 
     n_pos = input_ids_k.size(1) - 1
     king_loss = torch.zeros(B, device=king_device)
-    chall_loss = torch.zeros(B, device=chall_device)
 
     for i in range(0, n_pos, chunk_size):
         end = min(i + chunk_size, n_pos)
 
         logits_k = king_model.lm_head(hidden_k[:, i:end, :])
-        logits_c = chall_model.lm_head(hidden_c[:, i:end, :])
 
         labels_k = input_ids_k[:, i + 1 : end + 1]
-        labels_c = input_ids_c[:, i + 1 : end + 1]
         king_loss += F.cross_entropy(
             logits_k.reshape(-1, logits_k.size(-1)), labels_k.reshape(-1),
             reduction="none",
         ).reshape(B, -1).sum(1)
-        chall_loss += F.cross_entropy(
-            logits_c.reshape(-1, logits_c.size(-1)), labels_c.reshape(-1),
-            reduction="none",
-        ).reshape(B, -1).sum(1)
 
-        del logits_k, logits_c
+        del logits_k
 
-    return (
-        (king_loss / n_pos).cpu().tolist(),
-        (chall_loss / n_pos).cpu().tolist(),
-    )
-
+    return (king_loss / n_pos).cpu().tolist()
 
 # ---------------------------------------------------------------------------
 # Model loading
@@ -437,12 +424,12 @@ class MultiGPUEvaluator:
         self.pool.shutdown(wait=False)
 
 
-def compute_paired_multi_gpu(king_eval, chall_eval, token_batches):
+def compute_paired_multi_gpu(king_eval, token_batches):
     """Pair king GPUs with challenger GPUs to compute losses in parallel."""
     if not token_batches:
         return [], []
 
-    n_pairs = min(len(king_eval.gpu_ids), len(chall_eval.gpu_ids))
+    n_pairs = len(king_eval.gpu_ids)
     per_pair = [[] for _ in range(n_pairs)]
     idx_map = [[] for _ in range(n_pairs)]
     for i, batch in enumerate(token_batches):
@@ -456,26 +443,23 @@ def compute_paired_multi_gpu(king_eval, chall_eval, token_batches):
         if not per_pair[p_idx]:
             continue
         k_gid = king_eval.gpu_ids[p_idx]
-        c_gid = chall_eval.gpu_ids[p_idx]
         fut = pool.submit(
             compute_paired_losses,
-            king_eval.models[k_gid], chall_eval.models[c_gid],
+            king_eval.models[k_gid],
             per_pair[p_idx],
-            king_eval.devices[k_gid], chall_eval.devices[c_gid],
+            king_eval.devices[k_gid],
         )
         futures[fut] = p_idx
 
     king_results = [None] * len(token_batches)
-    chall_results = [None] * len(token_batches)
     for fut in as_completed(futures):
         p_idx = futures[fut]
-        k_losses, c_losses = fut.result()
+        k_losses = fut.result()
         for local_i, global_i in enumerate(idx_map[p_idx]):
             king_results[global_i] = k_losses[local_i]
-            chall_results[global_i] = c_losses[local_i]
 
     pool.shutdown(wait=False)
-    return king_results, chall_results
+    return king_results
 
 
 # ---------------------------------------------------------------------------
@@ -483,7 +467,7 @@ def compute_paired_multi_gpu(king_eval, chall_eval, token_batches):
 # ---------------------------------------------------------------------------
 
 
-def run_bootstrap_test(king_eval, challenger_eval, dataset_dir, eval_n,
+def run_bootstrap_test(king_eval_data, challenger_eval_data, dataset_dir, eval_n,
                        alpha, delta, seq_len, batch_size, seed_str,
                        n_bootstrap=10000, on_progress=None, max_shards=None):
     """Paired bootstrap test on per-token log-loss differences.
@@ -516,17 +500,28 @@ def run_bootstrap_test(king_eval, challenger_eval, dataset_dir, eval_n,
     total_done = 0
     t0 = time.time()
 
-    same_evaluator = king_eval is challenger_eval
+    same_evaluator_data = king_eval_data is challenger_eval_data
 
     for bi, token_batches in enumerate(batches):
-        if same_evaluator:
+        if same_evaluator_data:
+            king_eval = MultiGPUEvaluator(king_eval_data['repo'], king_eval_data['gpu'], label=king_eval_data['label'])
+
             king_losses = king_eval.compute_losses(token_batches)
             chall_losses = king_losses
+            king_eval.m()
         else:
-            king_losses, chall_losses = compute_paired_multi_gpu(
-                king_eval, challenger_eval, token_batches,
-            )
+            king_eval = MultiGPUEvaluator(king_eval_data['repo'], king_eval_data['gpu'], label=king_eval_data['label'])
 
+            king_losses = compute_paired_multi_gpu(
+                king_eval,  token_batches,
+            )
+            king_eval.shutdown()
+            challenger_eval = MultiGPUEvaluator(challenger_eval_data['repo'], challenger_eval_data['gpu'], label=challenger_eval_data['label'])
+
+            chall_losses = compute_paired_multi_gpu(
+                challenger_eval,  token_batches,
+            )
+            challenger_eval.shutdown()
         for k_loss, c_loss in zip(king_losses, chall_losses):
             total_done += 1
             king_sum += k_loss
@@ -635,15 +630,18 @@ def main():
 
     if same_model:
         log.info("king == challenger, using all %d GPUs for shared evaluator", len(gpu_ids))
-        king_eval = MultiGPUEvaluator(args.king, gpu_ids, label="king")
-        challenger_eval = king_eval
+        # king_eval = MultiGPUEvaluator(args.king, gpu_ids, label="king")
+        king_eval_data = {"repo" : args.king , "gpu" : gpu_ids , "label" : "king"}
+        challenger_eval_data = king_eval_data
     else:
         mid = len(gpu_ids) // 2
         king_gpus = gpu_ids[:mid] or gpu_ids[:1]
         chall_gpus = gpu_ids[mid:] or gpu_ids[:1]
         log.info("king GPUs: %s  challenger GPUs: %s", king_gpus, chall_gpus)
-        king_eval = MultiGPUEvaluator(args.king, king_gpus, label="king")
-        challenger_eval = MultiGPUEvaluator(args.challenger, chall_gpus, label="challenger")
+        # king_eval = MultiGPUEvaluator(args.king, king_gpus, label="king")
+        # challenger_eval = MultiGPUEvaluator(args.challenger, chall_gpus, label="challenger")
+        king_eval_data = {"repo" : args.king , "gpu" : king_gpus , "label" : "king"}
+        challenger_eval_data = {"repo": args.challenger , "gpu" : chall_gpus , "label" : "challenger"}
 
     log.info("=" * 60)
     log.info("EVAL CONFIG")
@@ -657,7 +655,7 @@ def main():
     log.info("=" * 60)
 
     verdict = run_bootstrap_test(
-        king_eval, challenger_eval,
+        king_eval_data, challenger_eval_data,
         dataset_dir=args.dataset_dir,  # Changed from shard_path
         eval_n=args.n, alpha=args.alpha, delta=args.delta,
         seq_len=args.seq_len, batch_size=args.batch_size, seed_str=args.seed,
@@ -665,9 +663,9 @@ def main():
         max_shards=args.max_shards,
     )
 
-    king_eval.shutdown()
-    if not same_model:
-        challenger_eval.shutdown()
+    # king_eval.shutdown()
+    # if not same_model:
+    #     challenger_eval.shutdown()
 
     print()
     print("=" * 60)
