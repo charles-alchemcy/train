@@ -502,32 +502,33 @@ def run_bootstrap_test(king_eval_data, challenger_eval_data, dataset_dir, eval_n
 
     same_evaluator_data = king_eval_data is challenger_eval_data
 
+    king_losses_batch = []
+    chall_losses_batch = []
+
+    king_eval = MultiGPUEvaluator(king_eval_data['repo'], king_eval_data['gpu'], label=king_eval_data['label'])
     for bi, token_batches in enumerate(batches):
-        if same_evaluator_data:
-            king_eval = MultiGPUEvaluator(king_eval_data['repo'], king_eval_data['gpu'], label=king_eval_data['label'])
+        king_losses = compute_paired_multi_gpu(
+            king_eval,  token_batches,
+        )
+        king_eval.shutdown()
+        king_losses_batch.append(king_losses)
+    del king_eval
+    
+    challenger_eval = MultiGPUEvaluator(challenger_eval_data['repo'], challenger_eval_data['gpu'], label=challenger_eval_data['label'])
+    for bi, token_batches in enumerate(batches):
+        chall_losses = compute_paired_multi_gpu(
+            challenger_eval,  token_batches,
+        )
+        challenger_eval.shutdown()
+        chall_losses_batch.append(chall_losses)
+    del challenger_eval
 
-            king_losses = king_eval.compute_losses(token_batches)
-            chall_losses = king_losses
-            king_eval.m()
-        else:
-            king_eval = MultiGPUEvaluator(king_eval_data['repo'], king_eval_data['gpu'], label=king_eval_data['label'])
-
-            king_losses = compute_paired_multi_gpu(
-                king_eval,  token_batches,
-            )
-            king_eval.shutdown()
-            challenger_eval = MultiGPUEvaluator(challenger_eval_data['repo'], challenger_eval_data['gpu'], label=challenger_eval_data['label'])
-
-            chall_losses = compute_paired_multi_gpu(
-                challenger_eval,  token_batches,
-            )
-            challenger_eval.shutdown()
+    for king_losses, chall_losses in zip(king_losses_batch, chall_losses_batch):
         for k_loss, c_loss in zip(king_losses, chall_losses):
             total_done += 1
             king_sum += k_loss
             chall_sum += c_loss
             all_diffs.append(k_loss - c_loss)
-
         elapsed = time.time() - t0
         seqs_per_sec = total_done / elapsed if elapsed > 0 else 0
         mu_hat = np.mean(all_diffs) if all_diffs else 0.0

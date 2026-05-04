@@ -4,9 +4,9 @@
 set -e  # Exit on error
 
 # Default configuration
-KING_REPO="/dev/shm/teutonic/models/conanedoAI/Teutonic-VIII-5Ek5KoE5-v1-5x-1196"
-CHALLENGER_REPO="merged/VIII/Teutonic-Foremost04-v0101"
-DATASET_DIR="/dev/shm/teutonic/datasets_eval"
+KING_REPO="/root/train/model_king"
+CHALLENGER_REPO="/root/train/model_chall"
+DATASET_DIR="/root/train/teutonic_eval"
 N_SAMPLES=160
 SEQ_LEN=2048
 BATCH_SIZE=16
