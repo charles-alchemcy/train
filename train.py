@@ -24,7 +24,7 @@ from transformers import (
 )
 from trl import SFTTrainer, SFTConfig
 from peft import LoraConfig, get_peft_model, PeftModel
-import quasar 
+# import quasar 
 # Optional: import wandb for explicit logging
 try:
     import wandb
@@ -140,6 +140,7 @@ class TrainingArgumentsCustom(SFTConfig):
     ddp_find_unused_parameters: bool = field(default=False)
     report_to: str = field(default="wandb")
     weight_decay: float = field(default=0.01)
+    deepspeed: str = field(default="ds_zero3.json")
 
 
 # =============================================================================
@@ -376,14 +377,12 @@ class TokenIDCollator:
 
 def load_model(model_args: ModelArguments, lora_args: LoRAArguments, logger: logging.Logger):
     logger.info(f"Loading model: {model_args.model_path}")
-    local_rank = int(os.environ.get("LOCAL_RANK", 0))
     model = AutoModelForCausalLM.from_pretrained(
         model_args.model_path,
         torch_dtype=parse_torch_dtype(model_args.torch_dtype),
         attn_implementation=model_args.attn_implementation,
         trust_remote_code=model_args.trust_remote_code,
         use_safetensors=True,
-        device_map={"": local_rank},
     )
     model.config.use_cache = False
     if lora_args.use_lora:
@@ -391,7 +390,15 @@ def load_model(model_args: ModelArguments, lora_args: LoRAArguments, logger: log
         lora_config = LoraConfig(
             r=lora_args.r,
             lora_alpha=lora_args.alpha,
-            target_modules=parse_target_modules(lora_args.target_modules),
+            target_modules=[
+                    "q_proj",
+                    "v_proj",
+                    # "k_proj",
+                    # "o_proj",
+                    # "gate_proj",
+                    # "up_proj",
+                    # "down_proj",
+                ],
             lora_dropout=lora_args.dropout,
             bias="none",
             task_type="CAUSAL_LM",

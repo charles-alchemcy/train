@@ -1,6 +1,6 @@
 mkdir -p /root/train/teutonic_eval
 
-seq -f "%06g" 1250 1250 | \
+seq -f "%06g" 456 456 | \
 xargs -n 1 -P 8 -I {} \
 wget -q --show-progress -c --tries=10 --timeout=30 \
   -O /root/train/teutonic_eval/shard_{}.npy \
