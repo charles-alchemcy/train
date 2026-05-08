@@ -4,8 +4,8 @@
 set -e  # Exit on error
 
 # Default configuration
-KING_REPO="/root/train/model_king"
-CHALLENGER_REPO="/root/train/model_chall"
+KING_REPO="/dev/shm/teu/checkpoint-300"
+CHALLENGER_REPO="/dev/shm/teu/checkpoint-400"
 DATASET_DIR="/root/train/teutonic_eval"
 N_SAMPLES=160
 SEQ_LEN=2048
