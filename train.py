@@ -139,8 +139,11 @@ class TrainingArgumentsCustom(SFTConfig):
     save_only_model: bool = field(default=True)
     ddp_find_unused_parameters: bool = field(default=False)
     report_to: str = field(default="wandb")
+    run_name: str = field(default="run_name")
     weight_decay: float = field(default=0.01)
     deepspeed: str = field(default="ds_zero3.json")
+    use_liger_kernel: bool = field(default=True)
+    gradient_checkpointing: bool = field(default=True)
 
 
 # =============================================================================
