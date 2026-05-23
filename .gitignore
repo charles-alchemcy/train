@@ -6,6 +6,8 @@ datasets
 logs
 merged
 wandb
+datasets_eval
+
 
 *.0
 *.jsonl

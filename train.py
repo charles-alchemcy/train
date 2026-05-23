@@ -141,7 +141,7 @@ class TrainingArgumentsCustom(SFTConfig):
     report_to: str = field(default="wandb")
     run_name: str = field(default="run_name")
     weight_decay: float = field(default=0.01)
-    deepspeed: str = field(default="ds_zero3.json")
+    # deepspeed: str = field(default="ds_zero3.json")
     use_liger_kernel: bool = field(default=True)
     gradient_checkpointing: bool = field(default=True)
 
@@ -406,20 +406,20 @@ def load_model(model_args: ModelArguments, lora_args: LoRAArguments, logger: log
         lora_config = LoraConfig(
             r=lora_args.r,
             lora_alpha=lora_args.alpha,
-            target_modules=[
-                    "q_proj",
-                    "k_proj",
-                    "v_proj",
-                    "o_proj",
-                    # "gate_proj",
-                    # "up_proj",
-                    # "down_proj",
-                ],
+            # target_modules=[
+            #         "q_proj",
+            #         "k_proj",
+            #         "v_proj",
+            #         "o_proj",
+            #         # "gate_proj",
+            #         # "up_proj",
+            #         # "down_proj",
+            #     ],
             target_parameters=[
                     # "mlp.experts.gate_up_proj",   # ← Most important for MoE experts
                     # "mlp.experts.down_proj",      # ← Most important for MoE experts
                 ],
-            # target_modules="all-linear",
+            target_modules="all-linear",
             lora_dropout=lora_args.dropout,
             bias="none",
             task_type="CAUSAL_LM",
@@ -434,7 +434,8 @@ def load_model(model_args: ModelArguments, lora_args: LoRAArguments, logger: log
 def load_dataset_and_tokenizer(data_args: DataArguments, model_args: ModelArguments, 
                                 train_args: TrainingArgumentsCustom, logger: logging.Logger):
     logger.info(f"Loading tokenizer from: {model_args.model_path}")
-    tokenizer = AutoTokenizer.from_pretrained(model_args.model_path)
+    # tokenizer = AutoTokenizer.from_pretrained(model_args.model_path)
+    tokenizer = AutoTokenizer.from_pretrained("Qwen/Qwen3-30B-A3B")
     tokenizer.pad_token = tokenizer.eos_token
     
     logger.info(f"Loading training dataset: {data_args.data_file}")

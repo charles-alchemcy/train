@@ -9,7 +9,7 @@ module.exports = {
 
       // Args: torchrun flags + your script + config file
       args: [
-        "--nproc_per_node=1", // Number of GPUs
+        "--nproc_per_node=2", // Number of GPUs
         "--master_port=29500", // Avoid port conflicts
         "--rdzv_backend=c10d", // Recommended for PyTorch DDP
         "train.py", // Your training script
@@ -21,7 +21,7 @@ module.exports = {
       // Environment variables
       env: {
         // GPU visibility
-        CUDA_VISIBLE_DEVICES: "0",
+        CUDA_VISIBLE_DEVICES: "0,1",
 
         // PyTorch distributed settings
         MASTER_ADDR: "localhost",
