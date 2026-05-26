@@ -387,18 +387,6 @@ def load_model(model_args: ModelArguments, lora_args: LoRAArguments, logger: log
         trust_remote_code=model_args.trust_remote_code,
         use_safetensors=True,
     )
-    print("=== Target modules found ===")
-    for name, module in model.named_modules():
-        if any(x in name for x in ["gate", "up", "down", "proj", "experts"]):
-            print(name, type(module), getattr(module, "weight", None).shape if hasattr(module, "weight") else "no weight")
-            
-    print("Trainable parameters:")
-    for name, param in model.named_parameters():
-        if param.requires_grad:
-            print(name, param.shape)
-    
-    print("Model dtype:", model.dtype)
-    print("Is ZeRO-3 active?", hasattr(model, "module") and "ZeRO" in str(type(model)))
     # model.enable_input_require_grads(True)  # Enable gradients for input embeddings
     model.config.use_cache = False
     if lora_args.use_lora:
@@ -406,25 +394,12 @@ def load_model(model_args: ModelArguments, lora_args: LoRAArguments, logger: log
         lora_config = LoraConfig(
             r=lora_args.r,
             lora_alpha=lora_args.alpha,
-            # target_modules=[
-            #         "q_proj",
-            #         "k_proj",
-            #         "v_proj",
-            #         "o_proj",
-            #         # "gate_proj",
-            #         # "up_proj",
-            #         # "down_proj",
-            #     ],
-            target_parameters=[
-                    # "mlp.experts.gate_up_proj",   # ← Most important for MoE experts
-                    # "mlp.experts.down_proj",      # ← Most important for MoE experts
-                ],
             target_modules="all-linear",
             lora_dropout=lora_args.dropout,
             bias="none",
             task_type="CAUSAL_LM",
             # init_lora_weights=lora_args.init_lora_weights,
-            use_rslora=True
+            # use_rslora=True
         )
         model = get_peft_model(model, lora_config)
         # model = deepspeed.initialize(model=model)
